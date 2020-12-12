@@ -1,29 +1,53 @@
 #
 # MailHog Dockerfile
 #
+# Changes based on https://medium.com/@chemidy/create-the-smallest-and-secured-golang-docker-image-based-on-scratch-4752223b7324
+# and https://medium.com/@diogok/on-golang-static-binaries-cross-compiling-and-plugins-1aed33499671
+#
 
-FROM golang:alpine
+############################
+# STEP 1 build executable binary
+#############################
+FROM golang:alpine as builder
 
-# Install MailHog:
-RUN apk --no-cache add --virtual build-dependencies \
-    git \
+# Compile STATIC MailHog:
+RUN apk --no-cache add git \
   && mkdir -p /root/gocode \
   && export GOPATH=/root/gocode \
-  && go get github.com/mailhog/MailHog \
-  && mv /root/gocode/bin/MailHog /usr/local/bin \
-  && rm -rf /root/gocode \
-  && apk del --purge build-dependencies
+  && CGO_ENABLED=0 go get -ldflags '-w -extldflags "-static"' github.com/mailhog/MailHog
 
-# Add mailhog user/group with uid/gid 1000.
-# This is a workaround for boot2docker issue #581, see
-# https://github.com/boot2docker/boot2docker/issues/581
-RUN adduser -D -u 1000 mailhog
+# Create appuser.
+ENV USER=appuser
+ENV UID=1000 
 
-USER mailhog
+# See https://stackoverflow.com/a/55757473/12429735RUN 
+RUN adduser \    
+    --disabled-password \    
+    --gecos "" \    
+    --home "/nonexistent" \    
+    --shell "/sbin/nologin" \    
+    --no-create-home \    
+    --uid "${UID}" \    
+    "${USER}"
 
-WORKDIR /home/mailhog
 
-ENTRYPOINT ["MailHog"]
+############################
+# STEP 2 build a small image
+############################
+FROM scratch
+
+# Import the user and group files from the builder.
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+
+# Copy our static executable.
+COPY --from=builder /root/gocode/bin/MailHog /usr/local/bin/MailHog
+
+# Use an unprivileged user.
+USER appuser:appuser
+
+# Run the binary.
+ENTRYPOINT ["/usr/local/bin/MailHog"]
 
 # Expose the SMTP and HTTP ports:
 EXPOSE 1025 8025
