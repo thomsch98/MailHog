@@ -121,3 +121,4 @@ If you make any changes, run ```go fmt ./...``` before submitting a pull request
 Copyright ©‎ 2014 - 2017, Ian Kent (http://iankent.uk)
 
 Released under MIT license, see [LICENSE](LICENSE.md) for details.
+
